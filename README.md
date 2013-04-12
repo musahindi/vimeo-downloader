@@ -8,9 +8,16 @@ Usage
 
 Run the following from the command line:
 
-    ./vimeo_downloader.sh http://vimeo.com/1084537
+    ./vimeo_downloader.sh -i <video_id>
 
-Can also just use the ID
+or
 
-    ./vimeo_downloader.sh 1084537
+    ./vimeo_downloader.sh -c <channel_name>
 
+or
+
+    ./vimeo_downloader.sh -i <channel_name> -s <start_page>
+
+or
+
+    ./vimeo_downloader.sh -i <channel_name> -s <start_page> -e <end_page>

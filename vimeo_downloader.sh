@@ -21,23 +21,20 @@
 
 USAGE="Vimeo Downloader v0.3.1\n  by Denver Gingerich (http://ossguy.com/)\n  with script improvements by Jori Hamalainen\n  updated for new Vimeo site by John Slade\n\nUsage: $0 -[icsevh] arg"
 
+# TODO: ensure that all flags have arguments
 while getopts :i:c:s:e:hv OPT; do
     case "$OPT" in
         i)
             VIMEO_ID=$OPTARG
-            echo "$VIMEO_ID"
             ;;
         c)
-        	CHANNEL_ID=$OPTARG 
-        	echo "$CHANNEL_ID"
+        	CHANNEL_ID=$OPTARG
         	;;
 		s)
 			START_PAGE=$OPTARG
-			echo "$START_PAGE"	
 			;;
 		e)
 			END_PAGE=$OPTARG
-			echo "$END_PAGE"
 			;;
         h)
             echo $USAGE
@@ -96,7 +93,7 @@ download_video () {
 		CAPTION=`echo $VIDEO_XML | perl -p -e '/^.*?\<meta property="og:title" content="(.*?)"\>.*$/; $_=$1; s/[^\w.]/-/g;'`
 		ISHD=`echo $VIDEO_XML |    perl -p -e '/^.*?\<meta itemprop="videoQuality" content="(HD)"\>.*$/; $_=lc($1)||"sd";'`
 
-		FILENAME="${CAPTION}-(${ISHD}-${VIMEO_ID}).flv"
+		FILENAME="${CAPTION}-(${ISHD}-${1}).flv"
 	else
 
 		# TODO update the sed code to work with the new site format
@@ -106,28 +103,60 @@ download_video () {
 		REQUEST_SIGNATURE=`echo $VIDEO_XML | sed -e 's/^.*<request_signature>\([^<]*\)<.*$/\1/g'`
 		REQUEST_SIGNATURE_EXPIRES=`echo $VIDEO_XML | sed -e 's/^.*<request_signature_expires>\([^<]*\)<.*$/\1/g'`
 		ISHD="sd"
-		FILENAME=${VIMEO_ID}.flv
+		FILENAME=${1}.flv
 	fi
 
 	echo
-	echo "Downloading video ${VIMEO_ID} to ${FILENAME}..."
+	echo "Downloading video ${1} to ${FILENAME}..."
 	echo "Request_signature=${REQUEST_SIGNATURE}"
 	echo "Request_signature_expires=${REQUEST_SIGNATURE_EXPIRES}"
 	echo "Quality=${QUALITY}"
 	echo 
 
-	EXEC_CMD="${GET_CMD} http://player.vimeo.com/play_redirect?clip_id=${VIMEO_ID}&sig=${REQUEST_SIGNATURE}&time=${REQUEST_SIGNATURE_EXPIRES}&quality=${ISHD}&codecs=H264,VP8,VP6&type=moogaloop_local&embed_location=" 
+	EXEC_CMD="${GET_CMD} http://player.vimeo.com/play_redirect?clip_id=${1}&sig=${REQUEST_SIGNATURE}&time=${REQUEST_SIGNATURE_EXPIRES}&quality=${ISHD}&codecs=H264,VP8,VP6&type=moogaloop_local&embed_location=" 
 	echo "Executing ${EXEC_CMD}"
 	${EXEC_CMD} > "${FILENAME}"
 
 	echo
-	echo "Video ${VIMEO_ID} saved to ${FILENAME}"
+	echo "Video ${1} saved to ${FILENAME}"
 	echo `file "${FILENAME}"`
 	echo
 }
 
-if [[ $VIMEO_ID ]]; then
+if [[ ! -z "$CHANNEL_ID" ]]; then
+	echo "channel ID = $CHANNEL_ID"
+
+	if [[ -z "$START_PAGE" ]]; then
+		START_PAGE="1"
+	fi
+
+	echo "start page = $START_PAGE"
+
+	if [[ -z "$END_PAGE" ]]; then
+		PAGES=`curl http://vimeo.com/$CHANNEL_ID/videos/ | grep -oE ">\d+<" | sed -E "s/(>|<)//g"  | sort -g | uniq`
+		END_PAGE=${PAGES[*]:${#PAGES}-2:${#PAGES}-1}
+	fi
+	
+	echo "end page = $END_PAGE"		
+
+	echo 'Getting video IDs for channel: '$CHANNEL_ID
+
+	for (( i = $START_PAGE; i <= $END_PAGE; i++ )); do
+		URL=`printf "http://vimeo.com/%s/videos/page:%d" $CHANNEL_ID $i`
+		LINES=`curl $URL | grep -oE '\"/[0-9]+\"'`
+
+		for  LINE in $LINES; do
+			ID=`echo $LINE | sed -E "s/(\"+\/|\")//g"`
+			download_video $ID
+		done
+	done
+
+	exit 0
+fi
+
+if [[ -z "$VIMEO_ID" ]]; then
 	download_video $VIMEO_ID
+	exit 0
 fi
 
 
