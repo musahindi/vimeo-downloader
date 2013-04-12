@@ -16,8 +16,8 @@ or
 
 or
 
-    ./vimeo_downloader.sh -i <channel_name> -s <start_page>
+    ./vimeo_downloader.sh -c <channel_name> -s <start_page>
 
 or
 
-    ./vimeo_downloader.sh -i <channel_name> -s <start_page> -e <end_page>
+    ./vimeo_downloader.sh -c <channel_name> -s <start_page> -e <end_page>
