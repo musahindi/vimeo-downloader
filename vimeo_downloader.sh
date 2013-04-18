@@ -19,16 +19,78 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 
-USAGE="Vimeo Downloader v0.3.1\n  by Denver Gingerich (http://ossguy.com/)\n  with script improvements by Jori Hamalainen\n  updated for new Vimeo site by John Slade\n\nUsage: $0 -[icsevh] arg"
+USAGE="Vimeo Downloader v0.3.1\n  by Denver Gingerich (http://ossguy.com/)\n  with script improvements by Jori Hamalainen\n  updated for new Vimeo site by John Slade\n\nUsage: $0\n\t-i <video_id>\n\t-c <channel_id>\n\t-c <channel_id> -s <start_page>\n\t-c <channel_id> -s <start_page> -e <end_page>\n\t-v\n\t-h"
 
-# TODO: ensure that all flags have arguments
-while getopts :i:c:s:e:hv OPT; do
+VIMEO_ROOT_URL="http://vimeo.com"
+
+validate_url () {
+	local URL="$1"
+
+	echo `curl -o /dev/null --silent --head --write-out '%{http_code}\n' "$URL"`
+}
+
+download_video () {
+
+	VIDEO_XML=`${GET_CMD} http://vimeo.com/$1`
+
+	if [ $USING_PERL -eq 1 ]; then
+		REQUEST_SIGNATURE=`echo $VIDEO_XML | perl -e '@text_in = <STDIN>; if (join(" ", @text_in) =~ /"signature":"(.*?)"/i ){ print "$1\n"; }'`
+		REQUEST_SIGNATURE_EXPIRES=`echo $VIDEO_XML | perl -e '@text_in = <STDIN>; if (join(" ", @text_in) =~ /"timestamp":(\d*?),/i ){ print "$1\n"; }'`
+		CAPTION=`echo $VIDEO_XML | perl -p -e '/^.*?\<meta property="og:title" content="(.*?)"\>.*$/; $_=$1; s/[^\w.]/-/g;'`
+		ISHD=`echo $VIDEO_XML |    perl -p -e '/^.*?\<meta itemprop="videoQuality" content="(HD)"\>.*$/; $_=lc($1)||"sd";'`
+
+		FILENAME="${CAPTION}-(${ISHD}-${1}).flv"
+	else
+
+		# TODO update the sed code to work with the new site format
+		echo "This version requires perl - exiting"
+		exit 2
+		
+		REQUEST_SIGNATURE=`echo $VIDEO_XML | sed -e 's/^.*<request_signature>\([^<]*\)<.*$/\1/g'`
+		REQUEST_SIGNATURE_EXPIRES=`echo $VIDEO_XML | sed -e 's/^.*<request_signature_expires>\([^<]*\)<.*$/\1/g'`
+		ISHD="sd"
+		FILENAME=${1}.flv
+	fi
+
+	echo
+	echo "Downloading video ${1} to ${FILENAME}..."
+	echo "Request_signature=${REQUEST_SIGNATURE}"
+	echo "Request_signature_expires=${REQUEST_SIGNATURE_EXPIRES}"
+	echo "Quality=${QUALITY}"
+	echo 
+
+	EXEC_CMD="${GET_CMD} http://player.vimeo.com/play_redirect?clip_id=${1}&sig=${REQUEST_SIGNATURE}&time=${REQUEST_SIGNATURE_EXPIRES}&quality=${ISHD}&codecs=H264,VP8,VP6&type=moogaloop_local&embed_location=" 
+	echo "Executing ${EXEC_CMD}"
+	${EXEC_CMD} > "${FILENAME}"
+
+	echo
+	echo "Video ${1} saved to ${FILENAME}"
+	echo `file "${FILENAME}"`
+	echo
+}
+
+# Parse the command arguments
+while getopts i:c:s:e:hv OPT; do
     case "$OPT" in
         i)
             VIMEO_ID=$OPTARG
+
+            STATUS_CODE=`validate_url "$VIMEO_ROOT_URL/$VIMEO_ID"`
+
+			if [[ $STATUS_CODE -ne 200 ]]; then
+				echo "($VIMEO_ID) is not a valid Vimeo video ID"
+				exit 1
+			fi
             ;;
         c)
         	CHANNEL_ID=$OPTARG
+
+        	STATUS_CODE=`validate_url "$VIMEO_ROOT_URL/$CHANNEL_ID"`
+
+			if [[ $STATUS_CODE -ne 200 ]]; then
+				echo "($CHANNEL_ID) is not a valid Vimeo channel ID"
+				exit 1
+			fi
         	;;
 		s)
 			START_PAGE=$OPTARG
@@ -83,60 +145,39 @@ else
 	USING_PERL=0
 fi
 
-download_video () {
-
-	VIDEO_XML=`${GET_CMD} http://vimeo.com/$1`
-
-	if [ $USING_PERL -eq 1 ]; then
-		REQUEST_SIGNATURE=`echo $VIDEO_XML | perl -e '@text_in = <STDIN>; if (join(" ", @text_in) =~ /"signature":"(.*?)"/i ){ print "$1\n"; }'`
-		REQUEST_SIGNATURE_EXPIRES=`echo $VIDEO_XML | perl -e '@text_in = <STDIN>; if (join(" ", @text_in) =~ /"timestamp":(\d*?),/i ){ print "$1\n"; }'`
-		CAPTION=`echo $VIDEO_XML | perl -p -e '/^.*?\<meta property="og:title" content="(.*?)"\>.*$/; $_=$1; s/[^\w.]/-/g;'`
-		ISHD=`echo $VIDEO_XML |    perl -p -e '/^.*?\<meta itemprop="videoQuality" content="(HD)"\>.*$/; $_=lc($1)||"sd";'`
-
-		FILENAME="${CAPTION}-(${ISHD}-${1}).flv"
-	else
-
-		# TODO update the sed code to work with the new site format
-		echo "This version requires perl - exiting"
-		exit 2
-		
-		REQUEST_SIGNATURE=`echo $VIDEO_XML | sed -e 's/^.*<request_signature>\([^<]*\)<.*$/\1/g'`
-		REQUEST_SIGNATURE_EXPIRES=`echo $VIDEO_XML | sed -e 's/^.*<request_signature_expires>\([^<]*\)<.*$/\1/g'`
-		ISHD="sd"
-		FILENAME=${1}.flv
-	fi
-
-	echo
-	echo "Downloading video ${1} to ${FILENAME}..."
-	echo "Request_signature=${REQUEST_SIGNATURE}"
-	echo "Request_signature_expires=${REQUEST_SIGNATURE_EXPIRES}"
-	echo "Quality=${QUALITY}"
-	echo 
-
-	EXEC_CMD="${GET_CMD} http://player.vimeo.com/play_redirect?clip_id=${1}&sig=${REQUEST_SIGNATURE}&time=${REQUEST_SIGNATURE_EXPIRES}&quality=${ISHD}&codecs=H264,VP8,VP6&type=moogaloop_local&embed_location=" 
-	echo "Executing ${EXEC_CMD}"
-	${EXEC_CMD} > "${FILENAME}"
-
-	echo
-	echo "Video ${1} saved to ${FILENAME}"
-	echo `file "${FILENAME}"`
-	echo
-}
-
+# Batch video download
 if [[ ! -z "$CHANNEL_ID" ]]; then
 	echo "channel ID = $CHANNEL_ID"
 
-	if [[ -z "$START_PAGE" ]]; then
+
+	if [[ ! -z "$START_PAGE" ]]; then
+		STATUS_CODE=`validate_url "$VIMEO_ROOT_URL/$CHANNEL_ID/videos/page:$START_PAGE"`			
+
+		if [[ $STATUS_CODE -ne 200 ]]; then
+			echo "($START_PAGE) is not a valid start page"
+			exit 1	
+		fi
+	else
 		START_PAGE="1"
+		echo "Start page is not defined, setting start page to $START_PAGE"
 	fi
 
 	echo "start page = $START_PAGE"
 
-	if [[ -z "$END_PAGE" ]]; then
-		PAGES=`curl http://vimeo.com/$CHANNEL_ID/videos/ | grep -oE ">\d+<" | sed -E "s/(>|<)//g"  | sort -g | uniq`
+	if [[ ! -z "$END_PAGE" ]]; then
+		STATUS_CODE=`validate_url "$VIMEO_ROOT_URL/$CHANNEL_ID/videos/page:$END_PAGE"`
+
+		if [[ $STATUS_CODE -ne 200 ]]; then
+			echo "($END_PAGE) is not a valid end page"
+			exit 1
+		fi
+	else	
+		PAGES=`curl --silent http://vimeo.com/$CHANNEL_ID/videos/ | grep -oE ">\d+<" | sed -E "s/(>|<)//g"  | sort -g | uniq`
 		END_PAGE=${PAGES[*]:${#PAGES}-2:${#PAGES}-1}
+		
+		echo "End page is not defined, setting end page to $END_PAGE"	
 	fi
-	
+
 	echo "end page = $END_PAGE"		
 
 	echo 'Getting video IDs for channel: '$CHANNEL_ID
@@ -154,7 +195,8 @@ if [[ ! -z "$CHANNEL_ID" ]]; then
 	exit 0
 fi
 
-if [[ -z "$VIMEO_ID" ]]; then
+# Single video download
+if [[ ! -z "$VIMEO_ID" ]]; then
 	download_video $VIMEO_ID
 	exit 0
 fi
